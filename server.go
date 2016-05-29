@@ -8,9 +8,9 @@ package wgnet
 **/
 
 import (
+	"fmt"
 	"net"
 	"sync"
-	"fmt"
 
 	// todo
 	// "github.com/golang/protobuf/proto"
@@ -38,17 +38,17 @@ type RawMessageCallback func(*WgTCPConn, *Message) error
 
 //GxTCPServer tcp服务器
 type WgTCPServer struct {
-	conn_mutex            *sync.Mutex           // 处理连接的互斥锁（一般用于增减连接）
-	addr_mapped_onns      map[string]*WgTCPConn // 地址映射的 WgTCPConn
-	ID_mapped_conns       map[uint32]*WgTCPConn // 连接ID映射的 WgTCPConn
-	ConnIDGenerator       uint32                // 用来给客户端连接分配ID
-	ConnIDMask            uint32                // 连接ID生成掩码
+	conn_mutex       *sync.Mutex           // 处理连接的互斥锁（一般用于增减连接）
+	addr_mapped_onns map[string]*WgTCPConn // 地址映射的 WgTCPConn
+	ID_mapped_conns  map[uint32]*WgTCPConn // 连接ID映射的 WgTCPConn
+	ConnIDGenerator  uint32                // 用来给客户端连接分配ID
+	ConnIDMask       uint32                // 连接ID生成掩码
 
-	on_new_conn_handler     NewConnCallback		// 新连接事件回调
-	on_dis_conn_handler	DisConnCallback       	// 断开连接回调
-	Rm                    RawMessageCallback
+	on_new_conn_handler NewConnCallback // 新连接事件回调
+	on_dis_conn_handler DisConnCallback // 断开连接回调
+	Rm                  RawMessageCallback
 
-	packet_handlers map[uint16]PacketHandler	// 消息处理事件
+	packet_handlers map[uint16]PacketHandler // 消息处理事件
 }
 
 // NewWgTCPServer 生成一个新的 WgTCPServer
@@ -75,29 +75,30 @@ func (server *WgTCPServer) RegisterPacketHandler(cmd uint16, handler PacketHandl
 }
 
 //Start 服务端启动函数
-func (server *WgTCPServer) Start(port string) error {
+func (server *WgTCPServer) Start(addr string) error {
 
 	// 监听端口
-	listener, err := net.Listen("tcp", port)
+	listener, err := net.Listen("tcp", addr)
 	if err != nil {
-		// todo logl GxMisc.Debug("lister %s fail", port)
+		// todo logl GxMisc.Debug("lister %s fail", addr)
 		return err
 	}
 
-	// GxMisc.Debug("server start, host: %s", port)
-	fmt.Println("server start, host: ", port)
+	// GxMisc.Debug("server start, host: %s", addr)
+	fmt.Println("server start, host: ", addr)
 
 	// 没有一个客户端连接， 就开启协程处理
 	for {
 		conn, err1 := listener.Accept()
 		if err1 != nil {
-			// todo log GxMisc.Debug("server Accept fail, err: ", err1)
+			fmt.Println("server Accept fail, err: ", err1)
 			return err1
 		}
 
 		go server.handle_new_conn(conn)
 	}
 
+	fmt.Println("exiting Start()")
 	return nil
 }
 
@@ -120,15 +121,18 @@ func (server *WgTCPServer) add_new_conn(gxConn *WgTCPConn) {
 	// gxConn.M = "Cli"
 
 	server.ID_mapped_conns[gxConn.ID] = gxConn
-	server.addr_mapped_onns [gxConn.Remote] = gxConn
+	server.addr_mapped_onns[gxConn.Remote] = gxConn
 }
 
 // runConn 新连接处理函数
 func (server *WgTCPServer) handle_new_conn(conn net.Conn) {
+
 	gxConn := NewTCPConn()
 	gxConn.Conn = conn
 	gxConn.Connected = true
 	gxConn.Remote = conn.RemoteAddr().String()
+
+	fmt.Println("new conn:", gxConn.Remote)
 
 	//生成通讯需要的密钥
 	// if gxConn.ServerKey() != nil {
@@ -147,7 +151,7 @@ func (server *WgTCPServer) handle_new_conn(conn net.Conn) {
 		// 处理数据接收
 		msg, err := gxConn.Recv()
 		if err != nil {
-			//GxMisc.Error("EEXXXXEE remote[%s:%s], info: %s", gxConn.M, gxConn.Remote, err)
+			// fmt.Printf("EEXXXXEE remote[%s:%s], info: %s", "gxConn.M", gxConn.Remote, err.Error())
 			server.closeConn(gxConn)
 			return
 		}
@@ -179,6 +183,7 @@ func (server *WgTCPServer) handle_new_conn(conn net.Conn) {
 
 		if err != nil {
 			//回调返回值不为空，则关闭连接
+			fmt.Println("err001:", err.Error())
 			server.closeConn(gxConn)
 			return
 		}
@@ -200,7 +205,7 @@ func (server *WgTCPServer) closeConn(conn *WgTCPConn) {
 		delete(server.addr_mapped_onns, conn.Remote)
 		delete(server.ID_mapped_conns, conn.ID)
 
-		// todo conn.Toc <- 0xFFFF
+		conn.Toc <- 0xFFFF
 
 		// 调用实际的断开连接
 		conn.Conn.Close()

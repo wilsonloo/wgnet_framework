@@ -11,8 +11,8 @@ import (
 	"errors"
 	"fmt"
 	"net"
-	"time"
 	"sync"
+	"time"
 )
 
 /* todo
@@ -27,18 +27,18 @@ import (
 
 // tcp连接
 type WgTCPConn struct {
-	ID        uint32 		// 连接ID
-	Conn      net.Conn		// 实际连接
-	Connected bool 			// 连接状态（和Close的意义不同，此处仅仅标记是否已连接，和是否断开需要删除无关）
+	ID        uint32   // 连接ID
+	Conn      net.Conn // 实际连接
+	Connected bool     // 连接状态（和Close的意义不同，此处仅仅标记是否已连接，和是否断开需要删除无关）
 
-	TimeoutCount 	int          	// 超时次数
-	TimeoutTicker	*time.Ticker 	// 超时检测定时器
-	// tod Toc          	chan int
+	TimeoutCount  int          // 超时次数
+	TimeoutTicker *time.Ticker // 超时检测定时器
+	Toc           chan int     // 系统事件
 
-	Remote   string			// 对端地址
+	Remote string // 对端地址
 
-	sendMutex *sync.Mutex 		// 发送锁
-	Close     bool        		// 是否已经关闭
+	sendMutex *sync.Mutex // 发送锁
+	Close     bool        // 是否已经关闭
 }
 
 // 生成一个新的 WgTCPConn
@@ -46,8 +46,8 @@ func NewTCPConn() *WgTCPConn {
 	tcpConn := new(WgTCPConn)
 	tcpConn.Connected = false
 	tcpConn.TimeoutCount = 0
-	// todo tcpConn.Toc = make(chan int, 1)
-	tcpConn.TimeoutTicker = time.NewTicker(5 * time.Second)
+	tcpConn.Toc = make(chan int, 1)
+	tcpConn.TimeoutTicker = time.NewTicker(1 * time.Second)
 	// todo tcpConn.M = "Cli" //默认
 	tcpConn.sendMutex = new(sync.Mutex)
 	tcpConn.Close = false
@@ -55,24 +55,24 @@ func NewTCPConn() *WgTCPConn {
 }
 
 /* 处理心跳函数，用协程启动
-	@param server 服务器连接
+@param server 服务器连接
 */
 func (conn *WgTCPConn) runHeartbeat(server *WgTCPServer) {
 	for {
 		select {
-		/* todo case state := <-conn.Toc:
+		case state := <-conn.Toc:
+			// 收到系统消息，用以直接退出协程
 			if state == 0XFFFF {
 				return
 			}
 			conn.TimeoutCount = state
-			*/
 
 		case <-conn.TimeoutTicker.C:
 			// 连接超时了
 
 			// 如果超时次数大于3次，直接断开
 			if conn.TimeoutCount > 3 {
-				// todo GxMisc.Info("<====== client[%d] %s:%s timeout,total:%d", conn.ConnIDGenerator, conn.M, conn.Remote, server.ConnectCount()-1)
+				fmt.Printf("<====== client[%d] %s:%s timeout\n", conn.ID, "conn.M", conn.Remote)
 
 				// 由server 统一处理断开操作
 				server.closeConn(conn)
@@ -148,11 +148,11 @@ func (conn *WgTCPConn) Recv() (*Message, error) {
 	}
 
 	/*
-	if err = msg.CheckFormat(); err != nil {
-		GxMisc.Error("XXXX %s remote[%s:%s] format err: %d", GxStatic.CmdString[msg.GetCmd()], conn.M, conn.Remote, msg.GetLen())
-		GxMessage.FreeMessage(msg)
-		return nil, err
-	}*/
+		if err = msg.CheckFormat(); err != nil {
+			GxMisc.Error("XXXX %s remote[%s:%s] format err: %d", GxStatic.CmdString[msg.GetCmd()], conn.M, conn.Remote, msg.GetLen())
+			GxMessage.FreeMessage(msg)
+			return nil, err
+		}*/
 
 	// 获取消息数据的长度
 	packet_len := msg.PacketLen()
@@ -195,6 +195,8 @@ func (conn *WgTCPConn) Connect(host string) error {
 	if err != nil {
 		return err
 	}
+
+	fmt.Println("connected to host: ", host)
 
 	conn.Conn = c
 	conn.Connected = true
