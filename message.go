@@ -17,13 +17,13 @@ const (
 // 消息头声明（注：该结构体只是用以说明，不会被使用）
 type _PacketHeader struct {
 	len uint16 // 长度
-	holder uint32 // 占位符
+	cmd uint16 // 命令号
 }
 
 // todo 此部分可修改
 // 消息头声明（注：该结构体只是用以说明，不会被使用）
 type _PacketData struct {
-	cmd uint16 // 命令号
+
 	holder uint32 // 占位符
 }
 
@@ -40,11 +40,54 @@ func (msg *Message) PacketLen() uint16 {
 }
 
 // todo 此部分可修改
-// 获取消息命令号
-func (msg *Message) Cmd() uint16 {
-	return uint16(msg.Data[0] << 8 | msg.Data[1])
+// 设置消息长度
+func (msg *Message) SetPacketLen(len uint16) {
+	msg.Header[0] = byte((len >> 8) & 0xFF)
+	msg.Header[1] = byte(len & 0xFF)
 }
 
+// todo 此部分可修改
+// 重置消息
+func (msg *Message) ResetPacket()  {
+	// todo 需要放回池内
+	msg.Data = nil
+
+	msg.Header[0] = 0
+	msg.Header[1] = 0
+}
+
+// todo 此部分可修改
+// 获取消息命令号
+func (msg *Message) Cmd() uint16 {
+	return uint16(msg.Header[2] << 8 | msg.Header[3])
+}
+
+func (msg *Message) SetCmd(cmd uint16)  {
+	msg.Header[2] = byte((cmd >> 8) & 0xFF)
+	msg.Header[3] = byte(cmd & 0xFF)
+}
+
+func (msg *Message) InitData() {
+	// todo 需要从池内获取
+	msg.Data = make([]byte, msg.PacketLen())
+}
+
+//Package 打包原生字符串
+// @param raw_len 返回原始数据的长度
+func (msg *Message) Package(cmd uint16, buff []byte) (packeted_len int, err error) {
+	size := len(buff)
+	if size == 0 {
+		return 0, nil
+	}
+
+	msg.ResetPacket()
+	msg.SetPacketLen(uint16(size))
+	msg.InitData()
+
+	// 先写
+	copy(msg.Data[:], buff)
+	return size, nil
+}
 
 // 按照消息长度初始化 消息体
 func (msg *Message) PreparePacket() {

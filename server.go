@@ -11,18 +11,8 @@ import (
 	"fmt"
 	"net"
 	"sync"
-
-	// todo
-	// "github.com/golang/protobuf/proto"
 )
 
-/* todo
-import (
-	"GxFramework/GxMessage"
-	"GxFramework/GxMisc"
-	"GxFramework/GxStatic"
-)
-*/
 
 //NewConnCallback 新连接回调
 type NewConnCallback func(*WgTCPConn)
@@ -64,9 +54,6 @@ func NewWgTCPServer(new_conn_handler NewConnCallback, dis_conn_handler DisConnCa
 	server.Rm = rm
 	server.packet_handlers = make(map[uint16]PacketHandler)
 
-	// 注册心跳回调
-	server.RegisterPacketHandler(PROTOCOL_CMD_HEARTBEAT, HeartbeatCallback)
-
 	return server
 }
 
@@ -85,20 +72,21 @@ func (server *WgTCPServer) Start(addr string) error {
 	}
 
 	// GxMisc.Debug("server start, host: %s", addr)
-	fmt.Println("server start, host: ", addr)
+	// fmt.Println("WgTCPServer.Start() server start, host: ", addr)
 
 	// 没有一个客户端连接， 就开启协程处理
-	for {
-		conn, err1 := listener.Accept()
-		if err1 != nil {
-			fmt.Println("server Accept fail, err: ", err1)
-			return err1
+	go func() {
+		for {
+			conn, err1 := listener.Accept()
+			if err1 != nil {
+				fmt.Println("server Accept fail, err: ", err1)
+				return
+			}
+
+			go server.handle_new_conn(conn)
 		}
+	}()
 
-		go server.handle_new_conn(conn)
-	}
-
-	fmt.Println("exiting Start()")
 	return nil
 }
 
@@ -145,18 +133,18 @@ func (server *WgTCPServer) handle_new_conn(conn net.Conn) {
 	server.on_new_conn_handler(gxConn)
 
 	// 心跳检测
-	go gxConn.runHeartbeat(server)
+	go server.handle_conn_heartbeat(gxConn)
 
 	for {
 		// 处理数据接收
 		msg, err := gxConn.Recv()
 		if err != nil {
-			// fmt.Printf("EEXXXXEE remote[%s:%s], info: %s", "gxConn.M", gxConn.Remote, err.Error())
+			fmt.Printf("EEXXXXEE remote[%s:%s], info: %s", "gxConn.M", gxConn.Remote, err.Error())
 			server.closeConn(gxConn)
 			return
 		}
 
-		if msg.Cmd() != PROTOCOL_CMD_HEARTBEAT {
+		if msg.Cmd() != def.PROTOCOL_CMD_HEARTBEAT {
 			// TODO LOG GxMisc.Debug("<<==== remote[%s:%s], info: %s", gxConn.M, gxConn.Remote, msg.String())
 		}
 
@@ -186,6 +174,40 @@ func (server *WgTCPServer) handle_new_conn(conn net.Conn) {
 			fmt.Println("err001:", err.Error())
 			server.closeConn(gxConn)
 			return
+		}
+	}
+}
+
+
+/* 处理心跳函数，用协程启动
+*/
+func (server *WgTCPServer)handle_conn_heartbeat(conn *WgTCPConn)  {
+	for {
+		select {
+		case state := <-conn.Toc:
+
+			// 收到系统消息，用以直接退出协程
+			if state == def.EVENT_TO_EXIT {
+				return
+			}
+
+			conn.TimeoutCount = state
+
+		case <-conn.TimeoutTicker.C:
+			// 连接超时了
+
+			// 如果超时次数大于3次，直接断开
+			if conn.TimeoutCount > 3 {
+				fmt.Printf("<====== client[%d] %s:%s timeout\n", conn.ID, "conn.M", conn.Remote)
+
+				// 由server 统一处理断开操作
+				server.closeConn(conn)
+
+			} else if conn.TimeoutCount >= 0 {
+				conn.TimeoutCount = conn.TimeoutCount + 1
+			} else {
+				break
+			}
 		}
 	}
 }

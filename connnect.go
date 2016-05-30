@@ -13,6 +13,8 @@ import (
 	"net"
 	"sync"
 	"time"
+	"github.com/golang/protobuf/proto"
+
 )
 
 /* todo
@@ -47,47 +49,42 @@ func NewTCPConn() *WgTCPConn {
 	tcpConn.Connected = false
 	tcpConn.TimeoutCount = 0
 	tcpConn.Toc = make(chan int, 1)
-	tcpConn.TimeoutTicker = time.NewTicker(1 * time.Second)
+	tcpConn.TimeoutTicker = time.NewTicker(5 * time.Second)
+
 	// todo tcpConn.M = "Cli" //默认
 	tcpConn.sendMutex = new(sync.Mutex)
 	tcpConn.Close = false
 	return tcpConn
 }
 
-/* 处理心跳函数，用协程启动
-@param server 服务器连接
-*/
-func (conn *WgTCPConn) runHeartbeat(server *WgTCPServer) {
-	for {
-		select {
-		case state := <-conn.Toc:
-			// 收到系统消息，用以直接退出协程
-			if state == 0XFFFF {
-				return
-			}
-			conn.TimeoutCount = state
+// 设置心跳秒数
+func (conn *WgTCPConn) SetKeepalive(timeout_seconds int) {
+	conn.TimeoutTicker = time.NewTicker(time.Duration(timeout_seconds) * time.Second)
+}
 
-		case <-conn.TimeoutTicker.C:
-			// 连接超时了
+// 发送pb消息
+func (conn *WgTCPConn) SendPbMessage(cmd uint16, pbmsg proto.Message) error {
 
-			// 如果超时次数大于3次，直接断开
-			if conn.TimeoutCount > 3 {
-				fmt.Printf("<====== client[%d] %s:%s timeout\n", conn.ID, "conn.M", conn.Remote)
+	// 创建网络消息体
+	msg := NewMessage()
+	msg.SetCmd(cmd)
 
-				// 由server 统一处理断开操作
-				server.closeConn(conn)
-
-			} else if conn.TimeoutCount >= 0 {
-				conn.TimeoutCount = conn.TimeoutCount + 1
-			} else {
-				break
-			}
-		}
+	// 将pb序列化
+	packet, err := proto.Marshal(pbmsg)
+	if err != nil {
+		return err
 	}
+
+	packeted_len, err := msg.Package(cmd, packet)
+	if err != nil {
+		return err
+	}
+
+	return conn.send_essage(msg, packeted_len)
 }
 
 // Send 发送消息函数
-func (conn *WgTCPConn) Send(msg []byte, msg_size int) error {
+func (conn *WgTCPConn) send_essage(msg *Message, packeted_len int) error {
 	conn.sendMutex.Lock()
 	defer conn.sendMutex.Unlock()
 
@@ -97,8 +94,24 @@ func (conn *WgTCPConn) Send(msg []byte, msg_size int) error {
 		return errors.New(fmt.Sprintf("remote[Conn:%s] disconnect,send msg:%s fail", conn.Remote, msg))
 	}
 
-	// 执行实际发送
-	len, err := conn.Conn.Write(msg)
+	var err error
+
+	// 先发送消息头
+	if err = conn.send_data(&msg.Header, PACKET_HEADER_LEN); err != nil {
+		return err
+	}
+
+	// 再发送消息体
+	if err = conn.send_data(&msg.Data, packeted_len); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (conn *WgTCPConn) send_data(data *[]byte, data_size int) error {
+
+	len, err :=conn.Conn.Write(*data)
 	if err != nil {
 
 		// 标记为断开（删除操作不应该有这里进行，而是有框架处理，例如心跳检测）
@@ -109,7 +122,7 @@ func (conn *WgTCPConn) Send(msg []byte, msg_size int) error {
 	}
 
 	// 检测是否发送完全部数据
-	if len != msg_size {
+	if len != data_size {
 
 		// 标记为断开（删除操作不应该有这里进行，而是有框架处理，例如心跳检测）
 		conn.Connected = false
