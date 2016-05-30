@@ -13,7 +13,6 @@ import (
 	"sync"
 )
 
-
 //NewConnCallback 新连接回调
 type NewConnCallback func(*WgTCPConn)
 
@@ -144,10 +143,6 @@ func (server *WgTCPServer) handle_new_conn(conn net.Conn) {
 			return
 		}
 
-		if msg.Cmd() != def.PROTOCOL_CMD_HEARTBEAT {
-			// TODO LOG GxMisc.Debug("<<==== remote[%s:%s], info: %s", gxConn.M, gxConn.Remote, msg.String())
-		}
-
 		// 获取消息处理器
 		packet_handler, ok := server.packet_handlers[msg.Cmd()]
 		if !ok {
@@ -178,16 +173,15 @@ func (server *WgTCPServer) handle_new_conn(conn net.Conn) {
 	}
 }
 
-
 /* 处理心跳函数，用协程启动
-*/
-func (server *WgTCPServer)handle_conn_heartbeat(conn *WgTCPConn)  {
+ */
+func (server *WgTCPServer) handle_conn_heartbeat(conn *WgTCPConn) {
 	for {
 		select {
 		case state := <-conn.Toc:
 
 			// 收到系统消息，用以直接退出协程
-			if state == def.EVENT_TO_EXIT {
+			if state == EVENT_TO_EXIT {
 				return
 			}
 

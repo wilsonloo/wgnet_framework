@@ -10,11 +10,10 @@ package wgnet
 import (
 	"errors"
 	"fmt"
+	"github.com/golang/protobuf/proto"
 	"net"
 	"sync"
 	"time"
-	"github.com/golang/protobuf/proto"
-
 )
 
 /* todo
@@ -111,7 +110,7 @@ func (conn *WgTCPConn) send_essage(msg *Message, packeted_len int) error {
 
 func (conn *WgTCPConn) send_data(data *[]byte, data_size int) error {
 
-	len, err :=conn.Conn.Write(*data)
+	len, err := conn.Conn.Write(*data)
 	if err != nil {
 
 		// 标记为断开（删除操作不应该有这里进行，而是有框架处理，例如心跳检测）

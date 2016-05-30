@@ -9,8 +9,8 @@ package wgnet
 
 // 定义
 const (
-	PACKET_HEADER_LEN 	= 4 	// 消息头的长度
-	MAX_PACKET_DATA_LEN 	= 1024  // 最大消息长度
+	PACKET_HEADER_LEN   = 4    // 消息头的长度
+	MAX_PACKET_DATA_LEN = 1024 // 最大消息长度
 )
 
 // todo 此部分可修改
@@ -23,20 +23,19 @@ type _PacketHeader struct {
 // todo 此部分可修改
 // 消息头声明（注：该结构体只是用以说明，不会被使用）
 type _PacketData struct {
-
 	holder uint32 // 占位符
 }
 
 // 消息定义
 type Message struct {
-	Header 	[]byte	// 消息头，
-	Data 	[]byte	// 实际消息
+	Header []byte // 消息头，
+	Data   []byte // 实际消息
 }
 
 // todo 此部分可修改
 // 获取消息长度
 func (msg *Message) PacketLen() uint16 {
-	return uint16(msg.Header[0] << 8 | msg.Header[1])
+	return uint16(msg.Header[0]<<8 | msg.Header[1])
 }
 
 // todo 此部分可修改
@@ -48,7 +47,7 @@ func (msg *Message) SetPacketLen(len uint16) {
 
 // todo 此部分可修改
 // 重置消息
-func (msg *Message) ResetPacket()  {
+func (msg *Message) ResetPacket() {
 	// todo 需要放回池内
 	msg.Data = nil
 
@@ -59,10 +58,10 @@ func (msg *Message) ResetPacket()  {
 // todo 此部分可修改
 // 获取消息命令号
 func (msg *Message) Cmd() uint16 {
-	return uint16(msg.Header[2] << 8 | msg.Header[3])
+	return uint16(msg.Header[2]<<8 | msg.Header[3])
 }
 
-func (msg *Message) SetCmd(cmd uint16)  {
+func (msg *Message) SetCmd(cmd uint16) {
 	msg.Header[2] = byte((cmd >> 8) & 0xFF)
 	msg.Header[3] = byte(cmd & 0xFF)
 }
@@ -96,12 +95,12 @@ func (msg *Message) PreparePacket() {
 }
 
 /* 创建一个消息
-	@param data_size 预设的消息长度
+@param data_size 预设的消息长度
 */
 func NewMessage() *Message {
 	// todo 优化：采用 message pool 的方式
 
-	msg := new (Message)
+	msg := new(Message)
 
 	// 固定消息头长度
 	msg.Header = make([]byte, PACKET_HEADER_LEN)
