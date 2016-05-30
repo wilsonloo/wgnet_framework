@@ -7,6 +7,7 @@
     <orderEntry type="library" scope="PROVIDED" name="Go SDK" level="project" />
     <orderEntry type="library" name="GOPATH &lt;wgnet&gt;" level="project" />
     <orderEntry type="module" module-name="chat_architeture" />
+    <orderEntry type="library" name="GOPATH &lt;wgnet&gt;" level="project" />
   </component>
   <component name="TestRunnerService">
     <option name="PROJECT_TEST_RUNNER" value="Unittests" />
