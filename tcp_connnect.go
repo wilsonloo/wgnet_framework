@@ -175,6 +175,7 @@ func (conn *WgTCPConn) Recv() (*Message, error) {
 	//TODO lwj 消息长度异常
 	if packet_len > MAX_PACKET_DATA_LEN {
 		// TODO LOG GxMisc.Warn("====XXXX %s remote[%s:%s] msg lenght is big:%v", GxStatic.CmdString[msg.GetCmd()], conn.M, conn.Remote, msg)
+		FreeMessage(msg)
 		return nil, errors.New("packet length error.")
 	}
 
@@ -189,11 +190,13 @@ func (conn *WgTCPConn) Recv() (*Message, error) {
 		/* if err != io.EOF {
 			return nil, err
 		}*/
+		FreeMessage(msg)
 		return nil, err
 	}
 
 	// 必须整整一个消息
 	if read_len != int(msg.PacketLen()) {
+		FreeMessage(msg)
 		return nil, errors.New("packet len reading error.")
 	}
 
