@@ -22,6 +22,9 @@ type DisConnCallback func(*WgTCPConn)
 // PacketHandler 消息处理器
 type PacketHandler func(*WgTCPConn, *Message) error
 
+// packet 处理失败回调
+type PacketHandleFailedHander func(*WgTCPConn, error)
+
 //RawMessageCallback 没有注册的消息的回调
 type RawMessageCallback func(*WgTCPConn, *Message) error
 
@@ -37,7 +40,8 @@ type WgTCPServer struct {
 	on_dis_conn_handler DisConnCallback // 断开连接回调
 	Rm                  RawMessageCallback
 
-	packet_handlers map[uint16]PacketHandler // 消息处理事件
+	packet_handlers map[uint16] PacketHandler // 消息处理事件
+	packet_handle_failed_handler PacketHandleFailedHander // 消息处理失败事件
 }
 
 // NewWgTCPServer 生成一个新的 WgTCPServer
@@ -58,6 +62,10 @@ func NewWgTCPServer(new_conn_handler NewConnCallback, dis_conn_handler DisConnCa
 
 func (server *WgTCPServer) RegisterPacketHandler(cmd uint16, handler PacketHandler) {
 	server.packet_handlers[cmd] = handler
+}
+
+func (server *WgTCPServer) RegisterPacketHandleFailedHander(handler PacketHandleFailedHander)  {
+	server.packet_handle_failed_handler = handler
 }
 
 //Start 服务端启动函数
@@ -138,7 +146,7 @@ func (server *WgTCPServer) handle_new_conn(conn net.Conn) {
 		// 处理数据接收
 		msg, err := gxConn.Recv()
 		if err != nil {
-			fmt.Printf("EEXXXXEE remote[%s:%s], info: %s", "gxConn.M", gxConn.Remote, err.Error())
+			fmt.Printf("EEXXXXEE remote[%s:%s], info: %s\n", "gxConn.M", gxConn.Remote, err.Error())
 			server.closeConn(gxConn)
 			return
 		}
@@ -165,6 +173,11 @@ func (server *WgTCPServer) handle_new_conn(conn net.Conn) {
 		FreeMessage(msg)
 
 		if err != nil {
+			// 最后一次推送给用户
+			if server.packet_handle_failed_handler != nil {
+				server.packet_handle_failed_handler(gxConn, err)
+			}
+
 			//回调返回值不为空，则关闭连接
 			fmt.Println("err001:", err.Error())
 			server.closeConn(gxConn)

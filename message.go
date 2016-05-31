@@ -7,6 +7,10 @@ package wgnet
 创建时间：2016-5-29
 **/
 
+import (
+	proto "github.com/golang/protobuf/proto"
+)
+
 // 定义
 const (
 	PACKET_HEADER_LEN   = 4    // 消息头的长度
@@ -69,6 +73,11 @@ func (msg *Message) SetCmd(cmd uint16) {
 func (msg *Message) InitData() {
 	// todo 需要从池内获取
 	msg.Data = make([]byte, msg.PacketLen())
+}
+
+//UnpackagePbmsg 解包protobuf消息
+func (msg *Message) Unpackage2Pbmsg(pb proto.Message) error {
+	return proto.Unmarshal(msg.Data, pb)
 }
 
 //Package 打包原生字符串
