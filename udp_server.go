@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"net"
 	"errors"
+	proto "github.com/golang/protobuf/proto"
 )
 
 //NewConnCallback 新连接回调
@@ -38,10 +39,11 @@ type UDPServer struct {
 }
 
 // NewUDPServer 生成一个新的 UDPServer
-func NewUDPServer(new_conn_handler NewUDPConnCallback, rm UDPRawMessageCallback, messageCtrl bool) *UDPServer {
+func NewUDPServer(new_conn_handler NewUDPConnCallback, rm UDPRawMessageCallback, fh UDPPacketHandleFailedHander, messageCtrl bool) *UDPServer {
 	server := new(UDPServer)
 
 	server.on_new_conn_handler = new_conn_handler
+	server.packet_handle_failed_handler = fh
 	server.Rm = rm
 	server.packet_handlers = make(map[uint16]UDPPacketHandler)
 
@@ -85,7 +87,7 @@ func (server *UDPServer) Start(addr string) error {
 				return
 			}
 
-			fmt.Println("connected from ", remote.String())
+			// fmt.Println("connected from ", remote.String())
 
 			go server.handle_new_conn(remote, buf, rlen)
 		}
@@ -104,7 +106,7 @@ func (conn *UDPServer) Recv(data[]byte, pos int, last int) (msg *Message, handle
 
 	// 检测是否构成一个包头
 	if remain_data_size < PACKET_HEADER_LEN {
-		fmt.Println("not enough packet data")
+		// fmt.Println("not enough packet data")
 		return nil, 0, errors.New("not enough packet data")
 	}
 
@@ -157,7 +159,7 @@ func (conn *UDPServer) Recv(data[]byte, pos int, last int) (msg *Message, handle
 // runConn 新连接处理函数
 func (server *UDPServer) handle_new_conn(remote *net.UDPAddr, data []byte, data_size int) {
 
-	fmt.Println("new udp conn:", remote.String())
+	// fmt.Println("new udp conn:", remote.String())
 
 	//生成通讯需要的密钥
 	// if gxConn.ServerKey() != nil {
@@ -170,10 +172,9 @@ func (server *UDPServer) handle_new_conn(remote *net.UDPAddr, data []byte, data_
 
 	pos := 0
 	for {
-
 		msg, handled_packet_len, err := server.Recv(data, pos, data_size)
 		if err != nil {
-			fmt.Println("failed to handle packet:", err)
+			// fmt.Println("failed to handle packet:", err)
 			return
 		}
 		pos += handled_packet_len
@@ -209,4 +210,58 @@ func (server *UDPServer) handle_new_conn(remote *net.UDPAddr, data []byte, data_
 			return
 		}
 	}
+}
+
+// 发送UDP消息
+func SendUdpMessage(addr string, msg *Message, msg_len int)  error {
+
+	fmt.Println("the udp addr is:", addr)
+	udpAddr, err := net.ResolveUDPAddr("udp4", addr)
+	if err != nil {
+		return err
+	}
+
+	fmt.Println("dialing:", addr)
+	player_conn, err := net.DialUDP("udp", nil, udpAddr)
+	if err != nil {
+		fmt.Println("net.DialUDP fail.", err)
+		return err
+	}
+    	defer player_conn.Close()
+	fmt.Println("dialing:", addr, "OK")
+
+	buf := make([]byte, msg_len)
+	copy(buf[0:], msg.Header)
+	copy(buf[PACKET_HEADER_LEN:], msg.Data)
+	if _, err = player_conn.Write(buf); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// 发送UDP消息
+func SendUdpPbMessage(addr string, cmd uint16, pbmsg proto.Message)  error {
+fmt.Println(444444)
+	// 创建网络消息体
+	msg := NewMessage()
+	msg.SetCmd(cmd)
+
+	// 将pb序列化
+	packet, err := proto.Marshal(pbmsg)
+	if err != nil {
+		return err
+	}
+
+	packet_len, err := msg.Package(cmd, packet)
+	if err != nil {
+		return err
+	}
+
+	if packet_len != len(packet) {
+		fmt.Printf("packet len error, got %d expecting %d", packet_len, len(packet))
+		return errors.New("packet len error")
+	}
+
+	return SendUdpMessage(addr, msg, PACKET_HEADER_LEN + packet_len)
 }

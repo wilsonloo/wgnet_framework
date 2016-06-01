@@ -39,7 +39,7 @@ type Message struct {
 // todo 此部分可修改
 // 获取消息长度
 func (msg *Message) PacketLen() uint16 {
-	return uint16(msg.Header[0]<<8 | msg.Header[1])
+	return uint16(msg.Header[0]) <<8 | uint16(msg.Header[1])
 }
 
 // todo 此部分可修改
@@ -62,7 +62,7 @@ func (msg *Message) ResetPacket() {
 // todo 此部分可修改
 // 获取消息命令号
 func (msg *Message) Cmd() uint16 {
-	return uint16(msg.Header[2]<<8 | msg.Header[3])
+	return uint16(msg.Header[2]) <<8 | uint16(msg.Header[3])
 }
 
 func (msg *Message) SetCmd(cmd uint16) {
