@@ -12,6 +12,7 @@
       <root url="file://$PROJECT_DIR$/../debug" />
       <root url="file://$PROJECT_DIR$/../os" />
       <root url="file://$PROJECT_DIR$/../odbc" />
+      <root url="file://$PROJECT_DIR$/../rclone" />
       <root url="file://$PROJECT_DIR$/../builtin" />
       <root url="file://$PROJECT_DIR$/../go" />
       <root url="file://$PROJECT_DIR$/../bytes" />
@@ -19,6 +20,9 @@
       <root url="file://$PROJECT_DIR$/../src" />
       <root url="file://$PROJECT_DIR$/../pkg" />
       <root url="file://$PROJECT_DIR$/../bin" />
+      <root url="file://$PROJECT_DIR$/../beego" />
+      <root url="file://$PROJECT_DIR$/../go-app-scatter-plugin" />
+      <root url="file://$PROJECT_DIR$/../oauth2_bak" />
       <root url="file://$PROJECT_DIR$/../container" />
       <root url="file://$PROJECT_DIR$/../mime" />
       <root url="file://$PROJECT_DIR$/../fmt" />

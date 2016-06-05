@@ -83,6 +83,11 @@ func (conn *WgTCPConn) SendPbMessage(cmd uint16, pbmsg proto.Message) error {
 }
 
 // Send 发送消息函数
+func (conn *WgTCPConn) SendMessage(msg *Message) error {
+	return conn.send_essage(msg, int(msg.PacketLen()))
+}
+
+// Send 发送消息函数
 func (conn *WgTCPConn) send_essage(msg *Message, packeted_len int) error {
 	conn.sendMutex.Lock()
 	defer conn.sendMutex.Unlock()

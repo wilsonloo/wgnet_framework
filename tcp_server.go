@@ -26,21 +26,21 @@ type PacketHandler func(*WgTCPConn, *Message) error
 type PacketHandleFailedHander func(*WgTCPConn, error)
 
 //RawMessageCallback 没有注册的消息的回调
-type RawMessageCallback func(*WgTCPConn, *Message) error
+type RawMessageCallback func(conn *WgTCPConn, cmd uint16, msg *Message) error
 
 //GxTCPServer tcp服务器
 type WgTCPServer struct {
-	conn_mutex       *sync.Mutex           // 处理连接的互斥锁（一般用于增减连接）
-	addr_mapped_onns map[string]*WgTCPConn // 地址映射的 WgTCPConn
-	ID_mapped_conns  map[uint32]*WgTCPConn // 连接ID映射的 WgTCPConn
-	ConnIDGenerator  uint32                // 用来给客户端连接分配ID
-	ConnIDMask       uint32                // 连接ID生成掩码
+	conn_mutex                   *sync.Mutex           // 处理连接的互斥锁（一般用于增减连接）
+	addr_mapped_onns             map[string]*WgTCPConn // 地址映射的 WgTCPConn
+	ID_mapped_conns              map[uint32]*WgTCPConn // 连接ID映射的 WgTCPConn
+	ConnIDGenerator              uint32                // 用来给客户端连接分配ID
+	ConnIDMask                   uint32                // 连接ID生成掩码
 
-	on_new_conn_handler NewConnCallback // 新连接事件回调
-	on_dis_conn_handler DisConnCallback // 断开连接回调
-	Rm                  RawMessageCallback
+	on_new_conn_handler          NewConnCallback // 新连接事件回调
+	on_dis_conn_handler          DisConnCallback // 断开连接回调
+	raw_message_handler          RawMessageCallback // 原始消息回调
 
-	packet_handlers map[uint16] PacketHandler // 消息处理事件
+	packet_handlers              map[uint16] PacketHandler // 消息处理事件
 	packet_handle_failed_handler PacketHandleFailedHander // 消息处理失败事件
 }
 
@@ -54,7 +54,7 @@ func NewWgTCPServer(new_conn_handler NewConnCallback, dis_conn_handler DisConnCa
 
 	server.on_new_conn_handler = new_conn_handler
 	server.on_dis_conn_handler = dis_conn_handler
-	server.Rm = rm
+	server.raw_message_handler = rm
 	server.packet_handlers = make(map[uint16]PacketHandler)
 
 	return server
@@ -155,19 +155,23 @@ func (server *WgTCPServer) handle_new_conn(conn net.Conn) {
 		packet_handler, ok := server.packet_handlers[msg.Cmd()]
 		if !ok {
 			// 消息没有被注册
-			// err = server.Rm(gxConn, msg)
-			fmt.Println("UNREGISTER CMD ", msg.Cmd())
+			if server.raw_message_handler != nil {
+				server.raw_message_handler(gxConn, msg.Cmd(), msg)
+			} else {
+				// err = server.Rm(gxConn, msg)
+				fmt.Println("UNREGISTER CMD ", msg.Cmd())
 
-			FreeMessage(msg)
-			continue
-			/*if err != nil {
-				server.closeConn(gxConn)
-				return
-			}*/
+				FreeMessage(msg)
+				continue
+				/*if err != nil {
+					server.closeConn(gxConn)
+					return
+				}*/
+			}
+		} else {
+			//消息已经被注册
+			err = packet_handler(gxConn, msg)
 		}
-
-		//消息已经被注册
-		err = packet_handler(gxConn, msg)
 
 		// 先回收消息
 		FreeMessage(msg)
