@@ -213,7 +213,7 @@ func (server *UDPServer) handle_new_conn(remote *net.UDPAddr, data []byte, data_
 }
 
 // 发送UDP消息
-func SendUdpMessage(addr string, msg *Message, msg_len int)  error {
+func SendUdpMessage(addr string, msg *Message, msg_len uint32)  error {
 
 	fmt.Println("the udp addr is:", addr)
 	udpAddr, err := net.ResolveUDPAddr("udp4", addr)
@@ -258,7 +258,7 @@ fmt.Println(444444)
 		return err
 	}
 
-	if packet_len != len(packet) {
+	if packet_len != uint32(len(packet) ){
 		fmt.Printf("packet len error, got %d expecting %d", packet_len, len(packet))
 		return errors.New("packet len error")
 	}

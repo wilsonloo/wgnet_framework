@@ -95,7 +95,7 @@ func (msg *Message) Unpackage2Pbmsg(pb proto.Message) error {
 
 //Package 打包原生字符串
 // @param raw_len 返回原始数据的长度
-func (msg *Message) Package(cmd uint16, buff []byte) (packeted_len int, err error) {
+func (msg *Message) Package(cmd uint16, buff []byte) (packeted_len uint32, err error) {
 	size := len(buff)
 	if size == 0 {
 		return 0, nil
@@ -107,7 +107,7 @@ func (msg *Message) Package(cmd uint16, buff []byte) (packeted_len int, err erro
 
 	// 先写
 	copy(msg.Data[:], buff)
-	return size, nil
+	return uint32(size), nil
 }
 
 // 按照消息长度初始化 消息体

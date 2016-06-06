@@ -73,7 +73,11 @@ func (conn *WgTCPConn) SendPbMessage(cmd uint16, pbmsg proto.Message) error {
 	return conn.send_essage(msg, packeted_len)
 }
 
-func (conn *WgTCPConn) GenMessage(cmd uint16, pbmsg proto.Message) (*Message, int, error) {
+func (conn *WgTCPConn) FreeMessage(msg *Message) {
+	FreeMessage(msg)
+}
+
+func (conn *WgTCPConn) GenMessage(cmd uint16, pbmsg proto.Message) (*Message, uint32, error) {
 		// 创建网络消息体
 	msg := NewMessage()
 	msg.SetCmd(cmd)
@@ -94,11 +98,11 @@ func (conn *WgTCPConn) GenMessage(cmd uint16, pbmsg proto.Message) (*Message, in
 
 // Send 发送消息函数
 func (conn *WgTCPConn) SendMessage(msg *Message) error {
-	return conn.send_essage(msg, int(msg.PacketLen()))
+	return conn.send_essage(msg, uint32(msg.PacketLen()))
 }
 
 // Send 发送消息函数
-func (conn *WgTCPConn) send_essage(msg *Message, packeted_len int) error {
+func (conn *WgTCPConn) send_essage(msg *Message, packeted_len uint32) error {
 	conn.sendMutex.Lock()
 	defer conn.sendMutex.Unlock()
 
@@ -123,7 +127,11 @@ func (conn *WgTCPConn) send_essage(msg *Message, packeted_len int) error {
 	return nil
 }
 
-func (conn *WgTCPConn) send_data(data *[]byte, data_size int) error {
+func (conn *WgTCPConn) SendData(data *[]byte, data_size uint32) error {
+	return conn.send_data(data, data_size)
+}
+
+func (conn *WgTCPConn) send_data(data *[]byte, data_size uint32) error {
 
 	len, err := conn.Conn.Write(*data)
 	if err != nil {
@@ -136,7 +144,7 @@ func (conn *WgTCPConn) send_data(data *[]byte, data_size int) error {
 	}
 
 	// 检测是否发送完全部数据
-	if len != data_size {
+	if uint32(len) != data_size {
 
 		// 标记为断开（删除操作不应该有这里进行，而是有框架处理，例如心跳检测）
 		conn.Connected = false
