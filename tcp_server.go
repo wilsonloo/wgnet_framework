@@ -11,6 +11,8 @@ import (
 	"fmt"
 	"net"
 	"sync"
+	"errors"
+	"strconv"
 )
 
 //NewConnCallback 新连接回调
@@ -26,7 +28,7 @@ type PacketHandler func(*WgTCPConn, *Message) error
 type PacketHandleFailedHander func(*WgTCPConn, error)
 
 //RawMessageCallback 没有注册的消息的回调
-type RawMessageCallback func(conn *WgTCPConn, cmd uint16, msg *Message) error
+type RawMessageCallback func(conn *WgTCPConn, msg *Message) error
 
 //GxTCPServer tcp服务器
 type WgTCPServer struct {
@@ -122,7 +124,7 @@ func (server *WgTCPServer) add_new_conn(gxConn *WgTCPConn) {
 // runConn 新连接处理函数
 func (server *WgTCPServer) handle_new_conn(conn net.Conn) {
 
-	gxConn := NewTCPConn()
+	gxConn := NewTCPConn(nil)
 	gxConn.Conn = conn
 	gxConn.Connected = true
 	gxConn.Remote = conn.RemoteAddr().String()
@@ -151,43 +153,46 @@ func (server *WgTCPServer) handle_new_conn(conn net.Conn) {
 			return
 		}
 
-		// 获取消息处理器
-		packet_handler, ok := server.packet_handlers[msg.Cmd()]
-		if !ok {
-			// 消息没有被注册
-			if server.raw_message_handler != nil {
-				server.raw_message_handler(gxConn, msg.Cmd(), msg)
-			} else {
-				// err = server.Rm(gxConn, msg)
-				fmt.Println("UNREGISTER CMD ", msg.Cmd())
-
-				FreeMessage(msg)
-				continue
-				/*if err != nil {
-					server.closeConn(gxConn)
-					return
-				}*/
-			}
-		} else {
-			//消息已经被注册
-			err = packet_handler(gxConn, msg)
-		}
-
-		// 先回收消息
-		FreeMessage(msg)
-
-		if err != nil {
-			// 最后一次推送给用户
-			if server.packet_handle_failed_handler != nil {
-				server.packet_handle_failed_handler(gxConn, err)
-			}
-
-			//回调返回值不为空，则关闭连接
-			fmt.Println("err001:", err.Error())
-			server.closeConn(gxConn)
-			return
-		}
+		// 处理消息
+		err = server.handle_msg(gxConn, msg)
 	}
+}
+
+// 处理message
+func (server *WgTCPServer) handle_msg(conn *WgTCPConn, msg *Message) error{
+
+	var err error
+
+	// 获取消息处理器
+	packet_handler, ok := server.packet_handlers[msg.Cmd()]
+	if !ok {
+		// 消息没有被注册
+		if server.raw_message_handler != nil {
+			err = server.raw_message_handler(conn, msg)
+		} else {
+			err = errors.New("unregister cmd:" + strconv.Itoa(int(msg.Cmd())))
+			fmt.Println("UNREGISTER CMD ", msg.Cmd())
+		}
+	} else {
+		//消息已经被注册
+		err = packet_handler(conn, msg)
+	}
+
+	// 先回收消息
+	FreeMessage(msg)
+
+	if err != nil {
+		// 最后一次推送给用户
+		if server.packet_handle_failed_handler != nil {
+			server.packet_handle_failed_handler(conn, err)
+		}
+
+		//回调返回值不为空，则关闭连接
+		fmt.Println("err001:", err.Error())
+		server.closeConn(conn)
+	}
+
+	return err
 }
 
 /* 处理心跳函数，用协程启动
@@ -287,60 +292,3 @@ func HeartbeatCallback(conn *WgTCPConn, msg *Message) error {
 
 	return nil
 }
-
-/*
-//SendRawMessage 发送一个字符串消息
-func SendRawMessage(conn *GxTCPConn, mask uint16, ID uint32, cmd uint16, seq uint16, ret uint16, buff []byte) {
-	msg := GxMessage.GetGxMessage()
-	defer GxMessage.FreeMessage(msg)
-
-	msg.SetID(ID)
-	msg.SetCmd(cmd)
-	msg.SetRet(ret)
-	msg.SetSeq(seq)
-	msg.SetMask(mask)
-
-	if len(buff) == 0 {
-		msg.SetLen(0)
-	} else {
-		err := msg.Package(buff)
-		if err != nil {
-			GxMisc.Debug("PackagePbmsg error")
-			return
-		}
-	}
-
-	conn.Send(msg)
-}
-
-//SendPbMessage 发送一个pb消息
-func SendPbMessage(conn *GxTCPConn, mask uint16, ID uint32, cmd uint16, seq uint16, ret uint16, pb proto.Message) {
-	msg := GxMessage.GetGxMessage()
-	defer GxMessage.FreeMessage(msg)
-
-	msg.SetID(ID)
-	msg.SetCmd(cmd)
-	msg.SetRet(ret)
-	msg.SetSeq(seq)
-	msg.SetMask(mask)
-
-	if pb == nil {
-		msg.SetLen(0)
-	} else {
-		err := msg.PackagePbmsg(pb)
-		if err != nil {
-			GxMisc.Debug("PackagePbmsg error")
-			return
-		}
-	}
-
-	if msg.GetCmd() != GxStatic.CmdHeartbeat {
-		if pb == nil {
-			GxMisc.Debug("====>> remote[%s:%s], info: %s", conn.M, conn.Remote, msg.String())
-		} else {
-			GxMisc.Debug("====>> remote[%s:%s], info: %s, rsp: \r\n\t%s", conn.M, conn.Remote, msg.String(), pb.String())
-		}
-	}
-	conn.Send(msg)
-}
-*/

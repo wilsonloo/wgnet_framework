@@ -36,6 +36,11 @@ type Message struct {
 	Data   []byte // 实际消息
 }
 
+// 获取整体消息大小
+func (msg *Message) MessageTotalSize() uint32{
+	return uint32(PACKET_HEADER_LEN) + uint32(msg.PacketLen())
+}
+
 // todo 此部分可修改
 // 获取消息长度
 func (msg *Message) PacketLen() uint16 {
@@ -73,6 +78,14 @@ func (msg *Message) SetCmd(cmd uint16) {
 func (msg *Message) InitData() {
 	// todo 需要从池内获取
 	msg.Data = make([]byte, msg.PacketLen())
+}
+
+func(msg *Message) Dump() []byte {
+	ret := make([]byte, msg.MessageTotalSize())
+	copy(ret[0:], msg.Header[:])
+	copy(ret[PACKET_HEADER_LEN:], msg.Data[:])
+
+	return ret
 }
 
 //UnpackagePbmsg 解包protobuf消息

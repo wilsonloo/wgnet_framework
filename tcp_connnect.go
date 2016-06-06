@@ -16,16 +16,6 @@ import (
 	"time"
 )
 
-/* todo
-import (
-	"GxFramework/GxMessage"
-	"GxFramework/GxMisc"
-	"GxFramework/GxStatic"
-	//"encoding/hex"
-	"sync"
-)
-*/
-
 // tcp连接
 type WgTCPConn struct {
 	ID        uint32   // 连接ID
@@ -40,10 +30,15 @@ type WgTCPConn struct {
 
 	sendMutex *sync.Mutex // 发送锁
 	Close     bool        // 是否已经关闭
+
+	packet_handlers  map[uint16] PacketHandler // 消息处理事件
+	raw_message_handler          RawMessageCallback // 原始消息回调
+	on_dis_conn_handler          DisConnCallback // 断开连接回调
+	packet_handle_failed_handler PacketHandleFailedHander // 消息处理失败事件
 }
 
 // 生成一个新的 WgTCPConn
-func NewTCPConn() *WgTCPConn {
+func NewTCPConn(raw_msg_hander RawMessageCallback) *WgTCPConn {
 	tcpConn := new(WgTCPConn)
 	tcpConn.Connected = false
 	tcpConn.TimeoutCount = 0
@@ -53,6 +48,8 @@ func NewTCPConn() *WgTCPConn {
 	// todo tcpConn.M = "Cli" //默认
 	tcpConn.sendMutex = new(sync.Mutex)
 	tcpConn.Close = false
+	tcpConn.raw_message_handler = raw_msg_hander
+
 	return tcpConn
 }
 
@@ -61,25 +58,38 @@ func (conn *WgTCPConn) SetKeepalive(timeout_seconds int) {
 	conn.TimeoutTicker = time.NewTicker(time.Duration(timeout_seconds) * time.Second)
 }
 
+func (server *WgTCPConn) RegisterPacketHandler(cmd uint16, handler PacketHandler) {
+	server.packet_handlers[cmd] = handler
+}
+
 // 发送pb消息
 func (conn *WgTCPConn) SendPbMessage(cmd uint16, pbmsg proto.Message) error {
 
-	// 创建网络消息体
+	msg, packeted_len, err := conn.GenMessage(cmd, pbmsg)
+	if err != nil {
+		return err
+	}
+
+	return conn.send_essage(msg, packeted_len)
+}
+
+func (conn *WgTCPConn) GenMessage(cmd uint16, pbmsg proto.Message) (*Message, int, error) {
+		// 创建网络消息体
 	msg := NewMessage()
 	msg.SetCmd(cmd)
 
 	// 将pb序列化
 	packet, err := proto.Marshal(pbmsg)
 	if err != nil {
-		return err
+		return nil, 0, err
 	}
 
 	packeted_len, err := msg.Package(cmd, packet)
 	if err != nil {
-		return err
+		return nil, 0, err
 	}
 
-	return conn.send_essage(msg, packeted_len)
+	return msg, packeted_len, nil
 }
 
 // Send 发送消息函数
@@ -137,6 +147,125 @@ func (conn *WgTCPConn) send_data(data *[]byte, data_size int) error {
 
 	// todo log GxMisc.Error("XXXX %s remote[%s:%s] write data ok:%d", GxStatic.CmdString[msg.GetCmd()], conn.M, conn.Remote, len)
 	return nil
+}
+
+// Recv 接受消息函数
+func (conn *WgTCPConn) RecvDataPacket(data []byte, data_size uint32) (*Message, error) {
+
+	if data_size < PACKET_HEADER_LEN {
+		return nil, errors.New("invalid message header")
+	}
+
+	// 先处理消息头
+	// 如果读取消息失败，消息要归还给消息池
+	msg := NewMessage()
+	read_len := copy(msg.Header[:], data[0:])
+	if uint16(read_len) != PACKET_HEADER_LEN {
+		FreeMessage(msg)
+		return nil, errors.New("recv-message error")
+	}
+
+	// 获取消息数据的长度
+	packet_len := msg.PacketLen()
+	if packet_len > 0 {
+		if uint32(packet_len) < data_size - PACKET_HEADER_LEN {
+			FreeMessage(msg)
+			return nil, errors.New("invalid packet")
+		}
+
+		if packet_len > MAX_PACKET_DATA_LEN {
+			FreeMessage(msg)
+			return nil, errors.New("packet length error.")
+		}
+	} // else {
+		// 有些消息只有消息头
+	// }
+
+	//写消息体
+	msg.PreparePacket()
+
+	// 阻塞式写满packet数据
+	read_len = copy(msg.Data[0:], data[PACKET_HEADER_LEN:])
+
+	// 必须整整一个消息
+	if read_len != int(packet_len) {
+		FreeMessage(msg)
+		return nil, errors.New("packet len reading error.")
+	}
+
+	return msg, nil
+}
+
+func (gxConn *WgTCPConn) RunRemoteServerService() {
+	for {
+		// 处理数据接收
+		msg, err := gxConn.Recv()
+		if err != nil {
+			fmt.Printf("EEXXXXEE remote[%s:%s], info: %s\n", "gxConn.M", gxConn.Remote, err.Error())
+			gxConn.close()
+			return
+		}
+
+		// 处理消息
+		err = gxConn.handle_msg(msg)
+	}
+}
+
+func (conn *WgTCPConn) close() {
+	if conn.Close {
+		return
+	}
+
+	// 标记此次连接已关闭
+	conn.Close = true
+
+	// 回调断开连接处理
+	conn.Toc <- 0xFFFF
+
+	if conn.on_dis_conn_handler != nil {
+		conn.on_dis_conn_handler(conn)
+	}
+
+	// 调用实际的断开连接
+	conn.Conn.Close()
+}
+
+// 处理message
+func (conn *WgTCPConn) handle_msg(msg *Message) error{
+
+	var err error
+
+	// 获取消息处理器
+	packet_handler, ok := conn.packet_handlers[msg.Cmd()]
+	if !ok {
+		// 消息没有被注册
+		if conn.raw_message_handler != nil {
+			err = conn.raw_message_handler(conn, msg)
+		} else {
+			fmt.Println("UNREGISTER CMD ", msg.Cmd())
+		}
+
+		err = nil
+	} else {
+		//消息已经被注册
+		err = packet_handler(conn, msg)
+	}
+
+	// 先回收消息
+	FreeMessage(msg)
+
+	if err != nil {
+		// 最后一次推送给用户
+		if conn.packet_handle_failed_handler != nil {
+			conn.packet_handle_failed_handler(conn, err)
+		}
+
+		//回调返回值不为空，则关闭连接
+		fmt.Println("err001:", err.Error())
+		conn.close()
+	}
+
+	return err
 }
 
 // Recv 接受消息函数
