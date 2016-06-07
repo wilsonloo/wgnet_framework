@@ -49,6 +49,7 @@ func NewTCPConn(raw_msg_hander RawMessageCallback) *WgTCPConn {
 	tcpConn.sendMutex = new(sync.Mutex)
 	tcpConn.Close = false
 	tcpConn.raw_message_handler = raw_msg_hander
+	tcpConn.packet_handlers = make(map[uint16] PacketHandler)
 
 	return tcpConn
 }
