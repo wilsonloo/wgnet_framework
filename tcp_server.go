@@ -229,10 +229,10 @@ func (server *WgTCPServer) handle_conn_heartbeat(conn *WgTCPConn) {
 }
 
 func (server *WgTCPServer) closeConn(conn *WgTCPConn) {
-	if !conn.Close {
+	if !conn.Closed {
 
 		// 标记此次连接已关闭
-		conn.Close = true
+		conn.Closed = true
 
 		// 回调断开连接处理
 		server.on_dis_conn_handler(conn)

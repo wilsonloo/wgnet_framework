@@ -42,9 +42,13 @@ func (msg *Message) MessageTotalSize() uint32{
 }
 
 // todo 此部分可修改
+func GetPacketLen(header []byte) uint16 {
+	return uint16(header[0]) <<8 | uint16(header[1])
+}
+
 // 获取消息长度
 func (msg *Message) PacketLen() uint16 {
-	return uint16(msg.Header[0]) <<8 | uint16(msg.Header[1])
+	return GetPacketLen(msg.Header)
 }
 
 // todo 此部分可修改
@@ -65,9 +69,12 @@ func (msg *Message) ResetPacket() {
 }
 
 // todo 此部分可修改
+func GetCMD(header []byte) uint16 {
+	return uint16(header[2]) <<8 | uint16(header[3])
+}
 // 获取消息命令号
 func (msg *Message) Cmd() uint16 {
-	return uint16(msg.Header[2]) <<8 | uint16(msg.Header[3])
+	return GetCMD(msg.Header)
 }
 
 func (msg *Message) SetCmd(cmd uint16) {
@@ -116,6 +123,10 @@ func (msg *Message) PreparePacket() {
 	msg.Data = make([]byte, msg.PacketLen())
 }
 
+func MakeHeader() []byte {
+	return make([]byte, PACKET_HEADER_LEN)
+}
+
 /* 创建一个消息
 @param data_size 预设的消息长度
 */
@@ -125,7 +136,7 @@ func NewMessage() *Message {
 	msg := new(Message)
 
 	// 固定消息头长度
-	msg.Header = make([]byte, PACKET_HEADER_LEN)
+	msg.Header = MakeHeader()
 
 	return msg
 }

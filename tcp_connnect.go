@@ -19,23 +19,23 @@ import (
 
 // tcp连接
 type WgTCPConn struct {
-	ID        uint32   // 连接ID
-	Conn      net.Conn // 实际连接
-	Connected bool     // 连接状态（和Close的意义不同，此处仅仅标记是否已连接，和是否断开需要删除无关）
+	ID                           uint32                    // 连接ID
+	Conn                         net.Conn                  // 实际连接
+	Connected                    bool                      // 连接状态（和Close的意义不同，此处仅仅标记是否已连接，和是否断开需要删除无关）
 
-	TimeoutCount  int          // 超时次数
-	TimeoutTicker *time.Ticker // 超时检测定时器
-	Toc           chan int     // 系统事件
+	TimeoutCount                 int                       // 超时次数
+	TimeoutTicker                *time.Ticker              // 超时检测定时器
+	Toc                          chan int                  // 系统事件
 
-	Remote string // 对端地址
+	Remote                       string                    // 对端地址
 
-	sendMutex *sync.Mutex // 发送锁
-	Close     bool        // 是否已经关闭
+	sendMutex                    *sync.Mutex               // 发送锁
+	Closed                       bool                      // 是否已经关闭
 
-	packet_handlers  map[uint16] PacketHandler // 消息处理事件
-	raw_message_handler          RawMessageCallback // 原始消息回调
-	on_dis_conn_handler          DisConnCallback // 断开连接回调
-	packet_handle_failed_handler PacketHandleFailedHander // 消息处理失败事件
+	packet_handlers              map[uint16] PacketHandler // 消息处理事件
+	raw_message_handler          RawMessageCallback        // 原始消息回调
+	on_dis_conn_handler          DisConnCallback           // 断开连接回调
+	packet_handle_failed_handler PacketHandleFailedHander  // 消息处理失败事件
 }
 
 // 生成一个新的 WgTCPConn
@@ -48,7 +48,7 @@ func NewTCPConn(raw_msg_hander RawMessageCallback) *WgTCPConn {
 
 	// todo tcpConn.M = "Cli" //默认
 	tcpConn.sendMutex = new(sync.Mutex)
-	tcpConn.Close = false
+	tcpConn.Closed = false
 	tcpConn.raw_message_handler = raw_msg_hander
 	tcpConn.packet_handlers = make(map[uint16] PacketHandler)
 
@@ -67,7 +67,7 @@ func (server *WgTCPConn) RegisterPacketHandler(cmd uint16, handler PacketHandler
 // 发送pb消息
 func (conn *WgTCPConn) SendPbMessage(cmd uint16, pbmsg proto.Message) error {
 
-	msg, packeted_len, err := conn.GenMessage(cmd, pbmsg)
+	msg, packeted_len, err := GenMessage(cmd, pbmsg)
 	if err != nil {
 		return err
 	}
@@ -79,7 +79,7 @@ func (conn *WgTCPConn) FreeMessage(msg *Message) {
 	FreeMessage(msg)
 }
 
-func (conn *WgTCPConn) GenMessage(cmd uint16, pbmsg proto.Message) (*Message, uint32, error) {
+func GenMessage(cmd uint16, pbmsg proto.Message) (*Message, uint32, error) {
 		// 创建网络消息体
 	msg := NewMessage()
 	msg.SetCmd(cmd)
@@ -159,8 +159,25 @@ func (conn *WgTCPConn) send_data(data *[]byte, data_size uint32) error {
 	return nil
 }
 
+// 获取cmd
+func PeerCMD(data []byte, data_size uint32) (uint16, error) {
+	if data_size < PACKET_HEADER_LEN {
+		return 0, errors.New("invalid message header")
+	}
+
+	// 先处理消息头
+	// 如果读取消息失败，消息要归还给消息池
+	header := MakeHeader()
+	read_len := copy(header[:], data[0:])
+	if uint16(read_len) != PACKET_HEADER_LEN {
+		return 0, errors.New("recv-message error")
+	}
+
+	return GetCMD(header), nil
+}
+
 // Recv 接受消息函数
-func (conn *WgTCPConn) RecvDataPacket(data []byte, data_size uint32) (*Message, error) {
+func RecvDataPacket(data []byte, data_size uint32) (*Message, error) {
 
 	if data_size < PACKET_HEADER_LEN {
 		return nil, errors.New("invalid message header")
@@ -212,7 +229,7 @@ func (gxConn *WgTCPConn) RunRemoteServerService() {
 		msg, err := gxConn.Recv()
 		if err != nil {
 			fmt.Printf("EEXXXXEE remote[%s:%s], info: %s\n", "gxConn.M", gxConn.Remote, err.Error())
-			gxConn.close()
+			gxConn.Close()
 			return
 		}
 
@@ -221,13 +238,13 @@ func (gxConn *WgTCPConn) RunRemoteServerService() {
 	}
 }
 
-func (conn *WgTCPConn) close() {
-	if conn.Close {
+func (conn *WgTCPConn) Close() {
+	if conn.Closed {
 		return
 	}
 
 	// 标记此次连接已关闭
-	conn.Close = true
+	conn.Closed = true
 
 	// 回调断开连接处理
 	conn.Toc <- 0xFFFF
@@ -272,7 +289,7 @@ func (conn *WgTCPConn) handle_msg(msg *Message) error{
 
 		//回调返回值不为空，则关闭连接
 		fmt.Println("err001:", err.Error())
-		conn.close()
+		conn.Close()
 	}
 
 	return err
@@ -282,7 +299,7 @@ func (conn *WgTCPConn) handle_msg(msg *Message) error{
 func (conn *WgTCPConn) Recv() (*Message, error) {
 
 	// 检测连接状态
-	if !conn.Connected || conn.Close {
+	if !conn.Connected || conn.Closed {
 		return nil, errors.New(fmt.Sprintf("remote[Conn:%s] disconnect,recv msg fail", conn.Remote))
 	}
 
