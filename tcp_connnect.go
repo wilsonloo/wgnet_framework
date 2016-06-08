@@ -14,6 +14,7 @@ import (
 	"net"
 	"sync"
 	"time"
+	"my_log"
 )
 
 // tcp连接
@@ -140,7 +141,7 @@ func (conn *WgTCPConn) send_data(data *[]byte, data_size uint32) error {
 		// 标记为断开（删除操作不应该有这里进行，而是有框架处理，例如心跳检测）
 		conn.Connected = false
 
-		// todo log GxMisc.Error("XXXX %s remote[%s:%s] write data err: %d", GxStatic.CmdString[msg.GetCmd()], conn.M, conn.Remote, len)
+		my_log.Debugf("[WgNet] failed to send_data, conn marked Disconnected!\n")
 		return err
 	}
 
@@ -150,7 +151,7 @@ func (conn *WgTCPConn) send_data(data *[]byte, data_size uint32) error {
 		// 标记为断开（删除操作不应该有这里进行，而是有框架处理，例如心跳检测）
 		conn.Connected = false
 
-		// todo log GxMisc.Error("XXXX %s remote[%s:%s] data lenght err: %d != %d", GxStatic.CmdString[msg.GetCmd()], conn.M, conn.Remote, len, msg.GetLen())
+		my_log.Debugf("[WgNet] sending unmached data len, conn marked Disconnected!\n")
 		return errors.New("send error as len not matched")
 	}
 
@@ -290,9 +291,10 @@ func (conn *WgTCPConn) Recv() (*Message, error) {
 	msg := NewMessage()
 	read_len, err := conn.Conn.Read(msg.Header)
 	if err != nil {
-		// todo log GxMisc.Error("XXXX %s remote[%s:%s] read header err: %d,%s ", GxStatic.CmdString[msg.GetCmd()], conn.M, conn.Remote, read_len, err)
 		FreeMessage(msg)
 		conn.Connected = false
+
+		my_log.Debugf("[WgNet] failed to Recv data, conn marked Disconnected, with error: %s \n", err.Error())
 		return nil, err
 	}
 
